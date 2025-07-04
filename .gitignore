@@ -117,10 +117,15 @@ ENV/
 
 # data
 *.parquet
-
+data/
 
 # local logs
 logs
 log
 outputs
 .history
+
+# eval
+eval
+
+*.sh

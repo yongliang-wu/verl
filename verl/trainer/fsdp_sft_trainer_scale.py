@@ -376,40 +376,55 @@ class FSDPSFTTrainer:
                 # 应用loss mask
                 loss = loss * loss_mask.to(loss.device)
             else:
-                # Sequence parallel部分保持不变
-                batch_size, seqlen = input_ids.shape
-                input_ids_rmpad, indices, *_ = unpad_input(input_ids.unsqueeze(-1), attention_mask)
-                input_ids_rmpad = input_ids_rmpad.transpose(0, 1)
+                # IMPORTANT: We have a big assumption here, so we can shard the SAME sequence across SP ranks
+                # i.e., each GPU has <1 sequence, and each SP group has 1 sequence
+                # 1. All SP ranks will receive the *SAME* batch
+                # 2. Different SP groups will receive *DIFFERENT* batches
+                # This is implemented by the DistributedSampler
 
+                batch_size, seqlen = input_ids.shape
+                # Remove padding
+                input_ids_rmpad, indices, *_ = unpad_input(
+                    input_ids.unsqueeze(-1), attention_mask
+                )  # input_ids_rmpad (total_nnz, ...)
+                input_ids_rmpad = input_ids_rmpad.transpose(0, 1)  # (1, total_nnz)
+
+                # Unpad position_ids to align rotary
                 position_ids_rmpad = index_first_axis(
                     rearrange(position_ids.unsqueeze(-1), "b s ... -> (b s) ..."), indices
                 ).transpose(0, 1)
 
+                # Pad and slice inputs for sequence parallelism
                 input_ids_rmpad_sliced, position_ids_rmpad_padded, pad_size = ulysses_pad_and_slice_inputs(
                     input_ids_rmpad, position_ids_rmpad, sp_size=get_ulysses_sequence_parallel_world_size()
                 )
-                input_ids_rmpad_rolled = torch.roll(input_ids_rmpad, shifts=-1, dims=1)
+                # For computing loss
+                input_ids_rmpad_rolled = torch.roll(input_ids_rmpad, shifts=-1, dims=1)  # (1, total_nnz)
                 input_ids_rmpad_rolled, _, _ = ulysses_pad_and_slice_inputs(
                     input_ids_rmpad_rolled, None, get_ulysses_sequence_parallel_world_size()
                 )
-                input_ids_rmpad_rolled = input_ids_rmpad_rolled.squeeze(0)
+                input_ids_rmpad_rolled = input_ids_rmpad_rolled.squeeze(0)  # ((total_nnz / sp) + pad)
 
+                # Forward pass
                 output = self.fsdp_model(
                     input_ids=input_ids_rmpad_sliced,
-                    attention_mask=None,
+                    attention_mask=None,  # Not needed with flash attention varlen
                     position_ids=position_ids_rmpad_padded,
                     use_cache=False,
                 )
 
+                # Compute loss locally then aggregate
                 logits_rmpad = output.logits.squeeze(0)
                 input_ids_rmpad_rolled = input_ids_rmpad_rolled.to(logits_rmpad.device)
                 loss = loss_fct(logits_rmpad, input_ids_rmpad_rolled)
+                # Gather and unpad for sequence parallelism
                 loss = gather_outpus_and_unpad(loss, gather_dim=0, unpad_dim=0, padding_size=pad_size)
 
+                # This is the loss collected from all ulysses ranks
                 full_loss = pad_input(
                     hidden_states=loss.unsqueeze(-1), indices=indices, batch=batch_size, seqlen=seqlen
                 )
-                full_loss = full_loss.squeeze(-1)[:, :-1]
+                full_loss = full_loss.squeeze(-1)[:, :-1]  # Remove last token's loss
                 full_loss = full_loss.reshape(-1)
                 loss_mask = loss_mask.to(full_loss.device)
                 loss = full_loss * loss_mask

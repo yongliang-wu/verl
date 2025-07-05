@@ -126,6 +126,8 @@ outputs
 .history
 
 # eval
-eval
+eval/math500/results
+eval/math500/*.sh
+eval/gsm8k/
 
 *.sh

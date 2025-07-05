@@ -22,14 +22,12 @@ if __name__ == '__main__':
     parser.add_argument('--hdfs_dir', default=None)
     parser.add_argument('--train_start', type=int, default=0)
     parser.add_argument('--train_end', type=int, default=10000000)
-    parser.add_argument('--model_name_or_path', type=str, default='Qwen/Qwen2.5-Math-1.5B')
 
     args = parser.parse_args()
 
     data_source = 'ScaleML-RLHF/numina_math'
     print(f"Loading the {data_source} dataset from huggingface...", flush=True)
     dataset = datasets.load_dataset(data_source, trust_remote_code=True)
-    tokenizer = AutoTokenizer.from_pretrained(args.model_name_or_path, trust_remote_code=True)
 
     train_dataset = dataset['train']
     args.train_end = min(args.train_end, len(train_dataset))
@@ -67,14 +65,9 @@ if __name__ == '__main__':
 
         return process_fn
     
-    def able_to_extract(example):
-        if len(tokenizer.encode(example['problem'])) > 700:
-            return False
-        return True
 
-    train_dataset = train_dataset.filter(able_to_extract)
-    
     print(f"Train dataset size: {len(train_dataset)}")
+    print(train_dataset[0])
 
     train_dataset = train_dataset.map(function=make_map_fn('train'), with_indices=True)
     print(train_dataset[0])

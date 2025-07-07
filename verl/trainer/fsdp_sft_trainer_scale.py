@@ -372,9 +372,11 @@ class FSDPSFTTrainer:
                 # 计算交叉熵损失
                 loss = loss_fct(shift_logits, shift_labels)
                 # 应用概率系数加权
+                original_loss = loss.clone()
                 loss = loss * prob_coefficients.detach()
                 # 应用loss mask
                 loss = loss * loss_mask.to(loss.device)
+                original_loss = original_loss * loss_mask.to(original_loss.device)
             else:
                 # IMPORTANT: We have a big assumption here, so we can shard the SAME sequence across SP ranks
                 # i.e., each GPU has <1 sequence, and each SP group has 1 sequence
@@ -439,9 +441,11 @@ class FSDPSFTTrainer:
 
             loss = torch.sum(loss) / (valid_token_this_rank + 1e-8) * dp_size
 
+            original_loss = torch.sum(original_loss) / (valid_token_this_rank + 1e-8) * dp_size
+
             if do_backward:
                 loss.backward()
-            return loss
+            return loss, original_loss
 
     def training_step(self, batch: TensorDict):
         self.fsdp_model.train()
@@ -455,9 +459,13 @@ class FSDPSFTTrainer:
         micro_batches = batch.split(self.config.data.micro_batch_size_per_gpu)
         n_micro_batches = len(micro_batches)
         step_loss = 0
+        step_original_loss = 0
         for micro_batch in micro_batches:
-            loss = self._compute_loss_and_backward(batch=micro_batch) / n_micro_batches
+            loss, original_loss = self._compute_loss_and_backward(batch=micro_batch)
+            loss = loss / n_micro_batches
+            original_loss = original_loss / n_micro_batches
             step_loss += loss.item()
+            step_original_loss += original_loss.item()
 
         if self.config.model.strategy == "fsdp":
             grad_norm = self.fsdp_model.clip_grad_norm_(max_norm=self.config.optim.clip_grad)
@@ -490,18 +498,20 @@ class FSDPSFTTrainer:
         elif is_npu_available:
             torch.distributed.all_reduce(step_loss)
             step_loss /= self.device_mesh.size(0)
-        return {"train/loss": step_loss.detach().item(), "train/lr(1e-3)": lr * 1e3}
+        return {"train/loss": step_loss.detach().item(), "train/lr(1e-3)": lr * 1e3, "train/original_loss": step_original_loss}
 
     def validation_step(self, batch: TensorDict):
         self.fsdp_model.eval()
         with torch.no_grad():
-            loss = self._compute_loss_and_backward(batch, do_backward=False)
+            loss, original_loss = self._compute_loss_and_backward(batch, do_backward=False)
             if is_cuda_available:
                 torch.distributed.all_reduce(loss, op=torch.distributed.ReduceOp.AVG)
+                torch.distributed.all_reduce(original_loss, op=torch.distributed.ReduceOp.AVG)
             elif is_npu_available:
                 torch.distributed.all_reduce(loss)
                 loss /= self.device_mesh.size(0)
-        return loss
+                original_loss /= self.device_mesh.size(0)
+        return loss, original_loss
 
     def save_checkpoint(self, step):
         # save checkpoint
@@ -593,15 +603,18 @@ class FSDPSFTTrainer:
                 if is_last_step or (self.config.trainer.test_freq > 0 and is_valid_step):
                     # Perform validation
                     val_losses = []
+                    val_original_losses = []
                     for val_data in self.val_dataloader:
                         val_data = TensorDict(val_data, batch_size=self.config.data.micro_batch_size_per_gpu).to(
                             self.device_name
                         )
-                        val_loss = self.validation_step(val_data)
+                        val_loss, val_original_loss = self.validation_step(val_data)
                         val_losses.append(val_loss)
+                        val_original_losses.append(val_original_loss)
                     if rank == 0:
                         val_loss = torch.mean(torch.stack(val_losses))
-                        metric = {"val/loss": val_loss.detach().item()}
+                        val_original_loss = torch.mean(torch.stack(val_original_losses))
+                        metric = {"val/loss": val_loss.detach().item(), "val/original_loss": val_original_loss.detach().item()}
                         tracking.log(data=metric, step=global_step)
                         last_valid_metric = metric
                     torch.distributed.barrier()

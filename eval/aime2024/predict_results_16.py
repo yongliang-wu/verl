@@ -55,12 +55,8 @@ def last_boxed_only_string(string):
 
     return retval
 
-def extract_solution(solution_str):
-    """从MATH数据集的solution中提取答案"""
-    return remove_boxed(last_boxed_only_string(solution_str))
-
 def extract_answer(solution_str):
-    """从MATH数据集的solution中提取答案"""
+    """从AIME2024数据集的solution中提取答案"""
     try:
         s = last_boxed_only_string(solution_str)
         if s is None:
@@ -73,7 +69,7 @@ def extract_answer(solution_str):
 @dataclass
 class ScriptArguments:
     """
-    MATH评估脚本的参数
+    AIME2024评估脚本的参数
     """
 
     model_name_or_path: Optional[str] = field(
@@ -81,15 +77,15 @@ class ScriptArguments:
         metadata={"help": "the location of the SFT model name or path"},
     )
     dataset_name_or_path: Optional[str] = field(
-        default="DigitalLearningGmbH/MATH-lighteval",
-        metadata={"help": "MATH数据集路径"},
+        default="Maxwell-Jia/AIME_2024",
+        metadata={"help": "AIME2024数据集路径"},
     )
     dataset_split: Optional[str] = field(
-        default="test",
-        metadata={"help": "数据集分割（train或test）"},
+        default="train",
+        metadata={"help": "数据集分割（train）"},
     )
     output_dir: Optional[str] = field(
-        default="./math_eval_results/",
+        default="./aime2024_eval_results/",
         metadata={"help": "the location of the output file"},
     )
     my_world_size: Optional[int] = field(
@@ -183,7 +179,7 @@ def worker_process(rank, world_size, script_args, prompts_chunk, ground_truths_c
     
     # 保存当前进程的结果
     os.makedirs(script_args.output_dir, exist_ok=True)
-    output_file = os.path.join(script_args.output_dir, f"math_results_rank_{rank}.jsonl")
+    output_file = os.path.join(script_args.output_dir, f"aime2024_results_rank_{rank}.jsonl")
     with open(output_file, "w", encoding="utf8") as f:
         for result in results:
             f.write(json.dumps(result, ensure_ascii=False) + '\n')
@@ -198,7 +194,7 @@ def merge_results(script_args, world_size):
     
     # 读取所有进程的结果
     for rank in range(world_size):
-        result_file = os.path.join(script_args.output_dir, f"math_results_rank_{rank}.jsonl")
+        result_file = os.path.join(script_args.output_dir, f"aime2024_results_rank_{rank}.jsonl")
         
         # 读取结果
         with open(result_file, "r", encoding="utf8") as f:
@@ -209,7 +205,7 @@ def merge_results(script_args, world_size):
         os.remove(result_file)
     
     # 保存合并后的结果
-    output_file = os.path.join(script_args.output_dir, f"math_results.jsonl")
+    output_file = os.path.join(script_args.output_dir, f"aime2024_results.jsonl")
     with open(output_file, "w", encoding="utf8") as f:
         for result in all_results:
             f.write(json.dumps(result, ensure_ascii=False) + '\n')
@@ -233,16 +229,16 @@ if __name__ == "__main__":
     # 加载tokenizer用于数据预处理
     tokenizer = AutoTokenizer.from_pretrained(model_path)
     
-    # 加载MATH数据集
-    print(f"加载MATH数据集: {script_args.dataset_name_or_path}")
+    # 加载AIME2024数据集
+    print(f"加载AIME2024数据集: {script_args.dataset_name_or_path}")
     ds = load_dataset(script_args.dataset_name_or_path, trust_remote_code=True, split=script_args.dataset_split)
     
     # 添加说明文本
     instruction_following = "Let's think step by step and output the final answer within \\boxed{}."
     
     # 处理数据集
-    def process_math_data(example):
-        question = example["problem"] + " " + instruction_following
+    def process_aime2024_data(example):
+        question = example["Problem"] + " " + instruction_following
         prompt = tokenizer.apply_chat_template(
             [{"role": "user", "content": question}], 
             tokenize=False, 
@@ -250,16 +246,16 @@ if __name__ == "__main__":
         )
         
         # 提取ground truth答案
-        ground_truth = extract_solution(example["solution"])
+        ground_truth = example["Answer"]
         
         return {
             "prompt": prompt,
-            "question": example["problem"],
-            "solution": example["solution"],
+            "question": example["Problem"],
+            "answer": example["Answer"],
             "ground_truth": ground_truth
         }
     
-    ds = ds.map(process_math_data)
+    ds = ds.map(process_aime2024_data)
     
     # 准备数据
     prompts = ds["prompt"]

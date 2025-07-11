@@ -136,3 +136,4 @@ eval/gsm8k/results
 eval/gsm8k/*.sh
 
 *.sh
+raft/

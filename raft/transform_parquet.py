@@ -25,8 +25,58 @@ def count_tokens_for_sample(sample_data, tokenizer):
     # 返回样本数据和token数量
     return sample_data, token_count
 
-def transform_filtered_jsonl_to_parquet(input_file, output_file, model_name_or_path, num_threads=8):
-    """将已筛选的jsonl格式训练数据转换为parquet格式，并使用多线程过滤掉token数量大于1024的样本"""
+def transform_filtered_jsonl_to_parquet(input_file, output_file, model_name_or_path, num_threads=8, max_tokens=1024):
+    """将已筛选的jsonl格式训练数据转换为parquet格式，并使用多线程过滤掉token数量大于max_tokens的样本"""
+    if max_tokens == -1:
+        # 直接全部转换为parquet格式，不进行token过滤
+        print(f"开始转换已筛选的训练数据为parquet格式，输入文件: {input_file}")
+        print("max_tokens为None，不进行token过滤，直接转换所有样本")
+        
+        # 读取所有数据
+        all_samples = []
+        with open(input_file, 'r', encoding='utf-8') as f:
+            for line in f:
+                data = json.loads(line)
+                all_samples.append(data)
+        
+        print(f"总共加载 {len(all_samples)} 个样本")
+        
+        # 转换所有样本
+        filtered_data = []
+        for i, sample_data in enumerate(tqdm(all_samples, desc="转换样本")):
+            question = sample_data['question']
+            ground_truth = sample_data['answer']
+            response = sample_data['response']
+            
+            # 按照numina_math.py的格式构造数据
+            filtered_sample = {
+                "data_source": "raft_numina_math",
+                "prompt": [
+                    {
+                        "role": "user",
+                        "content": question + " " + instruction_following
+                    }
+                ],
+                "ability": "math",
+                "reward_model": {"style": "rule", "ground_truth": ground_truth},
+                "extra_info": {
+                    "split": "train",
+                    "index": i,
+                    "question": question,
+                    "answer": response,
+                },
+            }
+            filtered_data.append(filtered_sample)
+        
+        # 转换为DataFrame并保存为parquet格式
+        os.makedirs(os.path.dirname(output_file), exist_ok=True)
+        df = pd.DataFrame(filtered_data)
+        df.to_parquet(output_file, index=False)
+        print(f"转换完成！")
+        print(f"总样本数: {len(all_samples)}")
+        print(f"转换后数据保存到: {output_file}")
+        return
+        
     print(f"开始转换已筛选的训练数据为parquet格式，输入文件: {input_file}")
     print(f"使用 {num_threads} 个线程进行并行token统计和过滤")
     
@@ -62,7 +112,7 @@ def transform_filtered_jsonl_to_parquet(input_file, output_file, model_name_or_p
                 # 线程安全地更新统计信息
                 with lock:
                     # 过滤掉token数量大于1024的样本
-                    if token_count > 1024:
+                    if token_count > max_tokens:
                         filtered_out_samples += 1
                         continue
                     
@@ -100,7 +150,7 @@ def transform_filtered_jsonl_to_parquet(input_file, output_file, model_name_or_p
     
     print(f"转换完成！")
     print(f"总样本数: {total_samples}")
-    print(f"过滤掉的样本数（token > 1024）: {filtered_out_samples}")
+    print(f"过滤掉的样本数（token > {max_tokens}）: {filtered_out_samples}")
     print(f"保留的样本数: {len(filtered_data)}")
     print(f"过滤比例: {filtered_out_samples / total_samples * 100:.2f}%")
     print(f"转换后数据保存到: {output_file}")
@@ -111,9 +161,11 @@ if __name__ == "__main__":
     parser.add_argument("--output_file", type=str, default="./training_data_k4/filtered_training_data.parquet")
     parser.add_argument("--model_name_or_path", type=str, default="Qwen/Qwen2.5-Math-7B")
     parser.add_argument("--num_threads", type=int, default=64, help="并行处理的线程数")
+    parser.add_argument("--max_tokens", type=int, default=1024, help="最大token数")
     args = parser.parse_args()
     input_file = args.input_file
     output_file = args.output_file
     model_name_or_path = args.model_name_or_path
     num_threads = args.num_threads
-    transform_filtered_jsonl_to_parquet(input_file, output_file, model_name_or_path, num_threads)
+    max_tokens = args.max_tokens
+    transform_filtered_jsonl_to_parquet(input_file, output_file, model_name_or_path, num_threads, max_tokens)

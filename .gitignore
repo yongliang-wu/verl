@@ -128,6 +128,11 @@ outputs
 # eval
 eval/math500/results
 eval/math500/*.sh
-eval/gsm8k/
+eval/aime2024/results
+eval/aime2024/*.sh
+eval/minervamath/results
+eval/minervamath/*.sh
+eval/gsm8k/results
+eval/gsm8k/*.sh
 
 *.sh

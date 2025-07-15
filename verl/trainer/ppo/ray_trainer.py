@@ -278,6 +278,12 @@ def compute_advantage(
         )
         data.batch["advantages"] = advantages
         data.batch["returns"] = returns
+    elif adv_estimator == AdvantageEstimator.RAFT:
+        advantages, returns = core_algos.compute_raft_outcome_advantage(
+            token_level_rewards=data.batch['token_level_rewards'],
+            response_mask=data.batch['response_mask'])
+        data.batch['advantages'] = advantages
+        data.batch['returns'] = returns
     else:
         # handle all other adv estimator type other than GAE and GRPO
         adv_estimator_fn = core_algos.get_adv_estimator_fn(adv_estimator)
@@ -376,6 +382,7 @@ class RayPPOTrainer:
             AdvantageEstimator.RLOO,
             AdvantageEstimator.OPO,
             AdvantageEstimator.REINFORCE_PLUS_PLUS_BASELINE,
+            AdvantageEstimator.RAFT,
         ]:
             self.use_critic = False
         else:

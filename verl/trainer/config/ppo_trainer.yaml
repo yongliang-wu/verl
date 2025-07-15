@@ -184,6 +184,9 @@ actor_rollout_ref:
     # Upper bound for asymmetric clipping (used in dual-clip PPO)
     clip_ratio_high: 0.2
 
+    # Scale for log probability scaling
+    scale: 0.1
+
     # policy loss config
     policy_loss:
     

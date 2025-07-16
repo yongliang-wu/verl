@@ -143,3 +143,6 @@ raft/
 # evaluation
 evaluation/*.sh
 evaluation/results
+
+# 不屏蔽
+!evaluation/data

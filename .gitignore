@@ -146,3 +146,4 @@ evaluation/results
 
 # 不屏蔽
 !evaluation/data
+!evaluation/sh/eval.sh

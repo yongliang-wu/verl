@@ -66,7 +66,7 @@ def extract_solution(solution_str):
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
-    parser.add_argument('--local_dir', default='data/numina_cot')
+    parser.add_argument('--local_dir', default='data/numina_cot_raw')
     parser.add_argument('--train_start', type=int, default=0)
     parser.add_argument('--train_end', type=int, default=0)
 
@@ -92,10 +92,6 @@ if __name__ == '__main__':
 
             answer_raw = example.pop('solution')
             solution = extract_solution(answer_raw)
-            
-            # 如果提取不到solution就跳过
-            if solution is None:
-                return None
                 
             data = {
                 "data_source": data_source,
@@ -120,8 +116,6 @@ if __name__ == '__main__':
     
 
     train_dataset = train_dataset.map(function=make_map_fn('train'), with_indices=True)
-    # 过滤掉None值
-    train_dataset = train_dataset.filter(lambda x: x is not None)
     
     print(f"length of train_dataset: {len(train_dataset)}")
     local_dir = args.local_dir

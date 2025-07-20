@@ -119,5 +119,8 @@ if __name__ == '__main__':
     
     print(f"length of train_dataset: {len(train_dataset)}")
     local_dir = args.local_dir
-    train_dataset.to_parquet(os.path.join(local_dir, 'train.parquet'))
+    if args.train_end > 0:
+        train_dataset.to_parquet(os.path.join(local_dir, f'train_{args.train_end}.parquet'))
+    else:
+        train_dataset.to_parquet(os.path.join(local_dir, 'train.parquet'))
     print(train_dataset[0])

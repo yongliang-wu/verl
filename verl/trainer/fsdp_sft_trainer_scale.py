@@ -367,7 +367,10 @@ class FSDPSFTTrainer:
                 probs = torch.softmax(shift_logits, dim=-1)
                 predicted_probs = probs.gather(1, shift_labels.unsqueeze(-1)).squeeze(-1)
                 # 概率越低，系数越小，并进行截断
-                prob_coefficients = torch.clamp(predicted_probs, min=self.scale)  # 设置最小概率系数为0.1
+                if self.scale > 0:
+                    prob_coefficients = torch.clamp(predicted_probs, min=self.scale)  # 设置最小概率系数
+                else:
+                    prob_coefficients = predicted_probs
                 
                 # 计算交叉熵损失
                 loss = loss_fct(shift_logits, shift_labels)

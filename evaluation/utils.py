@@ -138,6 +138,13 @@ PROMPT_TEMPLATES = {
         "{output}",
         "\n\n",
     ),
+    "llama-boxed": (
+        "<|start_header_id|>system<|end_header_id|>\n\nYou are a helpful assistant.<|eot_id|>\n"
+        "<|start_header_id|>user<|end_header_id|>\n\n{input}\nPlease reason step by step, and put your final answer within \\boxed{{}}.<|eot_id|>\n"
+        "<|start_header_id|>assistant<|end_header_id|>\n\n",
+        "{output}",
+        "\n\n",
+    ),
     "qwen25-math-cot": (
         "<|im_start|>system\nPlease reason step by step, and put your final answer within \\boxed{{}}.<|im_end|>\n"
         "<|im_start|>user\n{input}<|im_end|>\n"

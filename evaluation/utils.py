@@ -138,7 +138,14 @@ PROMPT_TEMPLATES = {
         "{output}",
         "\n\n",
     ),
-    "llama-boxed": (
+    "llama-base-boxed": (
+        "<|start_header_id|>system<|end_header_id|>\n\nYou are a helpful assistant.<|end_of_text|>\n"
+        "<|start_header_id|>user<|end_header_id|>\n\n{input}\nPlease reason step by step, and put your final answer within \\boxed{{}}.<|end_of_text|>\n"
+        "<|start_header_id|>assistant<|end_header_id|>\n\n",
+        "{output}",
+        "\n\n",
+    ),
+    "llama-ins-boxed": (
         "<|start_header_id|>system<|end_header_id|>\n\nYou are a helpful assistant.<|eot_id|>\n"
         "<|start_header_id|>user<|end_header_id|>\n\n{input}\nPlease reason step by step, and put your final answer within \\boxed{{}}.<|eot_id|>\n"
         "<|start_header_id|>assistant<|end_header_id|>\n\n",
